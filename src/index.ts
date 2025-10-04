@@ -128,45 +128,45 @@ ${JSON.stringify(rawDiff, null, 2)}
 
 // --- Webhook Endpoint ---
 app.post('/gitlab-webhook', async (req: Request, res: Response) => {
-  const gitlabToken = req.headers['x-gitlab-token'];
-  const event = req.headers['x-gitlab-event'];
+	const gitlabToken = req.headers['x-gitlab-token'];
+	const event = req.headers['x-gitlab-event'];
 
-  // 1. Webhook Secret Verification
-  if (!gitlabToken || gitlabToken !== GITLAB_WEBHOOK_SECRET) {
-    console.warn('Webhook verification failed: Invalid secret token.');
-    return res.status(401).send('Unauthorized: Invalid secret token.');
-  }
+	// 1. Webhook Secret Verification
+	if (!gitlabToken || gitlabToken !== GITLAB_WEBHOOK_SECRET) {
+		console.warn('Webhook verification failed: Invalid secret token.');
+		return res.status(401).send('Unauthorized: Invalid secret token.');
+	}
 
-  // 2. Event Filtering
-  if (event !== 'Merge Request Hook') {
-    return res.status(200).send('Event received, but not a Merge Request Hook. Ignored.');
-  }
+	// 2. Event Filtering
+	if (event !== 'Merge Request Hook') {
+		return res.status(200).send('Event received, but not a Merge Request Hook. Ignored.');
+	}
 
-  // Cast the body to our defined interface for type safety
-  const payload: GitLabMergeRequestPayload = req.body;
-  const action = payload.object_attributes.action;
+	// Cast the body to our defined interface for type safety
+	const payload: GitLabMergeRequestPayload = req.body;
+	const action = payload.object_attributes.action;
 
-  // Only process when MR is opened or updated (e.g., new commits pushed)
-  if (action !== 'open' && action !== 'update') {
-    return res.status(200).send(`MR event action '${action}' ignored.`);
-  }
+	// Only process when MR is opened or updated (e.g., new commits pushed)
+	if (action !== 'open' && action !== 'update') {
+		return res.status(200).send(`MR event action '${action}' ignored.`);
+	}
 
-  // 3. Extract necessary data
-  const projectId = payload.project.id;
-  const mergeRequestId = payload.object_attributes.iid;
-  console.log("🚀 ~ mergeRequestId:", mergeRequestId)
+	// 3. Extract necessary data
+	const projectId = payload.project.id;
+	const mergeRequestId = payload.object_attributes.iid;
+	console.log('🚀 ~ mergeRequestId:', mergeRequestId);
 
-  // URL to fetch the raw diff of the MR changes.
-  const diffUrl = `${GITLAB_URL}/projects/${projectId}/merge_requests/${mergeRequestId}/changes`;
+	// URL to fetch the raw diff of the MR changes.
+	const diffUrl = `${GITLAB_URL}/projects/${projectId}/merge_requests/${mergeRequestId}/changes`;
 
-  console.log(`Received MR !${mergeRequestId} event: ${action}. Starting async review...`);
+	console.log(`Received MR !${mergeRequestId} event: ${action}. Starting async review...`);
 
-  // **4. Respond Immediately & Process Asynchronously**
-  // This is vital. Respond 202 quickly and run the review in the background.
-  res.status(202).send('Webhook accepted. Review process started.');
+	// Start the heavy lifting outside the response path
+	await performCodeReview(projectId, mergeRequestId, diffUrl);
 
-  // Start the heavy lifting outside the response path
-  performCodeReview(projectId, mergeRequestId, diffUrl);
+	// **4. Respond Immediately & Process Asynchronously**
+	// This is vital. Respond 202 quickly and run the review in the background.
+	res.status(202).send('Webhook accepted. Review process started.');
 });
 
 app.listen(PORT, () => {
