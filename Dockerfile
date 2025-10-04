@@ -8,7 +8,9 @@ RUN npm install --production
 
 COPY . .
 
-RUN npm run build && npm prune --production
+RUN npm run build
+
+RUN npm prune --production
 
 ENV PORT=10000
 EXPOSE 10000
