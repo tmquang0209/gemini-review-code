@@ -23,32 +23,26 @@ const ai = new GoogleGenAI({});
 /**
  * * CORE FUNCTION: Handles the AI Code Review
  */
-async function performCodeReview(
-  projectId: number,
-  mergeRequestId: number,
-  diffUrl: string
-): Promise<void> {
-  if (!GITLAB_PAT || !GITLAB_URL) {
-    console.error('GitLab credentials are not set in environment variables.');
-    return;
-  }
+async function performCodeReview(projectId: number, mergeRequestId: number, diffUrl: string): Promise<void> {
+	if (!GITLAB_PAT || !GITLAB_URL) {
+		console.error('GitLab credentials are not set in environment variables.');
+		return;
+	}
 
-  try {
-    console.log("🚀 ~ performCodeReview ~ diffUrl:", diffUrl)
-    // 1. Fetch the Raw Diff from GitLab
-    // Using `responseType: 'text'` ensures we get the raw diff string
-    const diffResponse = await axios.get<string>(diffUrl, {
-    headers: {
-        'Private-Token': GITLAB_PAT,
-        'Accept': 'text/plain',
-    },
-});
+	try {
+		// 1. Fetch the Raw Diff from GitLab
+		// Using `responseType: 'text'` ensures we get the raw diff string
+		const diffResponse = await axios.get<string>(diffUrl, {
+			headers: {
+				'Private-Token': GITLAB_PAT,
+				Accept: 'text/plain',
+			},
+		});
 
-    const rawDiff = (diffResponse.data as any)?.changes;
-    console.log("🚀 ~ performCodeReview ~ rawDiff:", rawDiff)
+		const rawDiff = (diffResponse.data as any)?.changes;
 
-    // 2. Construct the Prompt
-    const prompt = `You are an expert AI Code Reviewer for Node.js (TypeScript/JavaScript) and Flutter/Dart projects. Analyze the provided GitLab merge request diff for bugs, security vulnerabilities, performance issues, and style guide violations. Please adhere to the following guidelines:
+		// 2. Construct the Prompt
+		const prompt = `You are an expert AI Code Reviewer for Node.js (TypeScript/JavaScript) and Flutter/Dart projects. Analyze the provided GitLab merge request diff for bugs, security vulnerabilities, performance issues, and style guide violations. Please adhere to the following guidelines:
 
 Provide your feedback in a concise, Markdown-formatted list. Use inline code suggestions if you find a specific fix.
 - Review Principles
@@ -89,6 +83,7 @@ All identifiers must strictly adhere to the following prefixes/suffixes using Pa
 + HTML/JSX/Widget Data Attribute: Must start with data- and use kebab-case (e.g., data-user-id).
 
 You should only respond with the review comments in Markdown format. Do not include any explanations or apologies.
+Please use diff context to inform your review, but do not repeat the entire diff in your response.
 Please focus solely on the code quality and issues.
 No review too long to avoid timeouts.
 Here is the diff to review (if too large, focus on the first 500 lines):
@@ -96,34 +91,34 @@ Here is the diff to review (if too large, focus on the first 500 lines):
 ${JSON.stringify(rawDiff, null, 2)}
 ---`;
 
-    // 3. Call the Gemini API
-    console.log(`Sending diff to Gemini for MR !${mergeRequestId}...`);
-    const geminiResponse = await ai.models.generateContent({
-        model: "gemini-2.5-flash", // Good balance of speed and quality
-        contents: prompt,
-    });
+		// 3. Call the Gemini API
+		console.log(`Sending diff to Gemini for MR !${mergeRequestId}...`);
+		const geminiResponse = await ai.models.generateContent({
+			model: 'gemini-2.5-flash', // Good balance of speed and quality
+			contents: prompt,
+		});
 
-    const reviewText = geminiResponse?.text?.trim();
+		const reviewText = geminiResponse?.text?.trim();
 
-    // 4. Post the Review as a Comment to the MR
-    const commentBody = {
-      body: `🤖 **AI Code Review (Powered by Gemini)**\n\n${reviewText}`,
-    };
+		// 4. Post the Review as a Comment to the MR
+		const commentBody = {
+			body: `🤖 **AI Code Review (Powered by Gemini)**\n\n${reviewText}`,
+		};
 
-    const postCommentUrl = `${GITLAB_URL}/projects/${projectId}/merge_requests/${mergeRequestId}/notes`;
+		const postCommentUrl = `${GITLAB_URL}/projects/${projectId}/merge_requests/${mergeRequestId}/notes`;
 
-    await axios.post(postCommentUrl, commentBody, {
-      headers: {
-        'Private-Token': GITLAB_PAT,
-        'Content-Type': 'application/json',
-      },
-    });
+		await axios.post(postCommentUrl, commentBody, {
+			headers: {
+				'Private-Token': GITLAB_PAT,
+				'Content-Type': 'application/json',
+			},
+		});
 
-    console.log(`Successfully posted review to MR !${mergeRequestId}.`);
-  } catch (error) {
-    console.error(`Error during code review process for MR !${mergeRequestId}:`, (error as Error).message);
-    // In a real application, you might want to log this or post a "Review Failed" comment.
-  }
+		console.log(`Successfully posted review to MR !${mergeRequestId}.`);
+	} catch (error) {
+		console.error(`Error during code review process for MR !${mergeRequestId}:`, (error as Error).message);
+		// In a real application, you might want to log this or post a "Review Failed" comment.
+	}
 }
 
 // --- Webhook Endpoint ---
@@ -154,7 +149,6 @@ app.post('/gitlab-webhook', async (req: Request, res: Response) => {
 	// 3. Extract necessary data
 	const projectId = payload.project.id;
 	const mergeRequestId = payload.object_attributes.iid;
-	console.log('🚀 ~ mergeRequestId:', mergeRequestId);
 
 	// URL to fetch the raw diff of the MR changes.
 	const diffUrl = `${GITLAB_URL}/projects/${projectId}/merge_requests/${mergeRequestId}/changes`;
@@ -167,6 +161,11 @@ app.post('/gitlab-webhook', async (req: Request, res: Response) => {
 	// **4. Respond Immediately & Process Asynchronously**
 	// This is vital. Respond 202 quickly and run the review in the background.
 	res.status(202).send('Webhook accepted. Review process started.');
+});
+
+app.post('/payments/sepay/webhook', async (req, res) => {
+	console.log('🚀 ~ req:', req.body);
+	return res.status(200).send('OK');
 });
 
 app.listen(PORT, () => {
